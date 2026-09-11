@@ -1,188 +1,209 @@
-// CircularLinkedList.h
-// Student 1 — Circular Linked List
-//
-// Generic (templated) circular singly linked list. The final node always
-// points back to head instead of nullptr, so the list can be walked forever
-// (used by GlowLoop for the Morning and Night routines).
-//
-// Because this class is templated, the full implementation lives in this
-// header so the compiler can generate code for whatever type T it is used
-// with (e.g. CircularLinkedList<SkincareStep>).
-
 #ifndef CIRCULAR_LINKED_LIST_H
 #define CIRCULAR_LINKED_LIST_H
 
-#include <iostream>
+#include <cstddef>
 #include <functional>
+#include <utility>
 
-template <typename T>
-class Node {
-public:
-    T data;
-    Node<T>* next;
-
-    Node(const T& data) : data(data), next(nullptr) {}
-};
-
+// Stores generic values in a cycle whose final node points back to the head.
 template <typename T>
 class CircularLinkedList {
 private:
-    Node<T>* head;
-    int count;
+    // Represents one value and the link to the next value in the cycle.
+    struct Node {
+        T data;
+        Node* next;
+
+        // Creates a node containing a copy of the supplied value.
+        explicit Node(const T& value) : data(value), next(nullptr) {}
+    };
+
+    Node* head;
+    Node* tail;
+    std::size_t itemCount;
 
 public:
-    CircularLinkedList();
-    ~CircularLinkedList();
+    // Creates an empty circularly linked list.
+    CircularLinkedList() : head(nullptr), tail(nullptr), itemCount(0) {}
 
-    // Adds a new item to the end of the list (right before it wraps back to head).
-    void add(const T& item);
-
-    // Removes the first item for which match(item) returns true.
-    // Returns true if something was removed, false if nothing matched.
-    bool remove(const std::function<bool(const T&)>& match);
-
-    // Looks for the first item for which match(item) returns true.
-    // If found, copies it into result and returns true; otherwise returns false.
-    bool search(const std::function<bool(const T&)>& match, T& result) const;
-
-    // Prints every item in the list, in order, once around the circle.
-    // Assumes T has a displayStep() method, as SkincareStep does.
-    void display() const;
-
-    bool isEmpty() const;
-    int size() const;
-};
-
-template <typename T>
-CircularLinkedList<T>::CircularLinkedList() : head(nullptr), count(0) {}
-
-template <typename T>
-CircularLinkedList<T>::~CircularLinkedList() {
-    if (head == nullptr) {
-        return;
+    // Releases every node owned by the list.
+    ~CircularLinkedList() {
+        clear();
     }
 
-    // Break the circle so a normal traversal terminates, then delete every node.
-    Node<T>* tail = head;
-    while (tail->next != head) {
-        tail = tail->next;
-    }
-    tail->next = nullptr;
+    // Prevents accidental shallow copies of node pointers.
+    CircularLinkedList(const CircularLinkedList&) = delete;
+    CircularLinkedList& operator=(const CircularLinkedList&) = delete;
 
-    Node<T>* current = head;
-    while (current != nullptr) {
-        Node<T>* next = current->next;
-        delete current;
-        current = next;
-    }
-    head = nullptr;
-}
+    // Adds an item to the end of the cycle.
+    void add(const T& item) {
+        Node* newNode = new Node(item);
 
-template <typename T>
-void CircularLinkedList<T>::add(const T& item) {
-    Node<T>* newNode = new Node<T>(item);
-
-    if (head == nullptr) {
-        // First node in the list points to itself.
-        head = newNode;
-        newNode->next = head;
-    } else {
-        // Find the current tail (the node whose next is head), then insert after it.
-        Node<T>* tail = head;
-        while (tail->next != head) {
-            tail = tail->next;
+        if (head == nullptr) {
+            head = newNode;
+            tail = newNode;
+            newNode->next = head;
+        } else {
+            newNode->next = head;
+            tail->next = newNode;
+            tail = newNode;
         }
-        tail->next = newNode;
-        newNode->next = head;
+
+        ++itemCount;
     }
 
-    count++;
-}
+    // Inserts an item before the first larger item according to a comparison.
+    template <typename Compare>
+    void addInOrder(const T& item, Compare comesBefore) {
+        if (head == nullptr || comesBefore(item, head->data)) {
+            Node* newNode = new Node(item);
 
-template <typename T>
-bool CircularLinkedList<T>::remove(const std::function<bool(const T&)>& match) {
-    if (head == nullptr) {
-        return false;
-    }
-
-    // Special case: only one node in the list.
-    if (head->next == head) {
-        if (match(head->data)) {
-            delete head;
-            head = nullptr;
-            count--;
-            return true;
-        }
-        return false;
-    }
-
-    Node<T>* current = head;
-    Node<T>* prev = nullptr;
-
-    do {
-        if (match(current->data)) {
-            if (current == head) {
-                // Removing the head: find the tail so it can point to the new head.
-                Node<T>* tail = head;
-                while (tail->next != head) {
-                    tail = tail->next;
-                }
-                head = head->next;
-                tail->next = head;
+            if (head == nullptr) {
+                head = newNode;
+                tail = newNode;
+                newNode->next = head;
             } else {
-                prev->next = current->next;
+                newNode->next = head;
+                head = newNode;
+                tail->next = head;
             }
-            delete current;
-            count--;
-            return true;
+
+            ++itemCount;
+            return;
         }
-        prev = current;
-        current = current->next;
-    } while (current != head);
 
-    return false;
-}
+        Node* current = head;
+        while (current != tail && !comesBefore(item, current->next->data)) {
+            current = current->next;
+        }
 
-template <typename T>
-bool CircularLinkedList<T>::search(const std::function<bool(const T&)>& match, T& result) const {
-    if (head == nullptr) {
+        Node* newNode = new Node(item);
+        newNode->next = current->next;
+        current->next = newNode;
+
+        if (current == tail) {
+            tail = newNode;
+        }
+
+        ++itemCount;
+    }
+
+    // Removes the first item for which the predicate returns true.
+    template <typename Predicate>
+    bool removeIf(Predicate matches) {
+        if (head == nullptr) {
+            return false;
+        }
+
+        Node* current = head;
+        Node* previous = tail;
+
+        do {
+            if (matches(current->data)) {
+                if (itemCount == 1) {
+                    head = nullptr;
+                    tail = nullptr;
+                } else {
+                    previous->next = current->next;
+
+                    if (current == head) {
+                        head = current->next;
+                        tail->next = head;
+                    }
+
+                    if (current == tail) {
+                        tail = previous;
+                        tail->next = head;
+                    }
+                }
+
+                delete current;
+                --itemCount;
+                return true;
+            }
+
+            previous = current;
+            current = current->next;
+        } while (current != head);
+
         return false;
     }
 
-    Node<T>* current = head;
-    do {
-        if (match(current->data)) {
-            result = current->data;
-            return true;
+    // Returns the first item matching a predicate or nullptr when not found.
+    template <typename Predicate>
+    const T* findIf(Predicate matches) const {
+        if (head == nullptr) {
+            return nullptr;
         }
-        current = current->next;
-    } while (current != head);
 
-    return false;
-}
+        Node* current = head;
+        do {
+            if (matches(current->data)) {
+                return &current->data;
+            }
 
-template <typename T>
-void CircularLinkedList<T>::display() const {
-    if (head == nullptr) {
-        std::cout << "The skincare routine is currently empty." << std::endl;
-        return;
+            current = current->next;
+        } while (current != head);
+
+        return nullptr;
     }
 
-    Node<T>* current = head;
-    do {
-        current->data.displayStep();
-        current = current->next;
-    } while (current != head);
-}
+    // Runs an action once for each item, beginning at the head.
+    void forEach(const std::function<void(const T&)>& action) const {
+        if (head == nullptr) {
+            return;
+        }
 
-template <typename T>
-bool CircularLinkedList<T>::isEmpty() const {
-    return head == nullptr;
-}
+        Node* current = head;
+        do {
+            action(current->data);
+            current = current->next;
+        } while (current != head);
+    }
 
-template <typename T>
-int CircularLinkedList<T>::size() const {
-    return count;
-}
+    // Returns the item at a zero-based position or nullptr for an invalid index.
+    const T* at(std::size_t index) const {
+        if (index >= itemCount) {
+            return nullptr;
+        }
+
+        Node* current = head;
+        for (std::size_t position = 0; position < index; ++position) {
+            current = current->next;
+        }
+
+        return &current->data;
+    }
+
+    // Reports whether the list contains no items.
+    bool empty() const {
+        return itemCount == 0;
+    }
+
+    // Returns the number of items currently stored.
+    std::size_t size() const {
+        return itemCount;
+    }
+
+    // Deletes every node and restores the empty-list state.
+    void clear() {
+        if (head == nullptr) {
+            return;
+        }
+
+        tail->next = nullptr;
+        Node* current = head;
+
+        while (current != nullptr) {
+            Node* nodeToDelete = current;
+            current = current->next;
+            delete nodeToDelete;
+        }
+
+        head = nullptr;
+        tail = nullptr;
+        itemCount = 0;
+    }
+};
 
 #endif
