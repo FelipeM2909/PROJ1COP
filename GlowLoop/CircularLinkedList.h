@@ -206,4 +206,9 @@ public:
     }
 };
 
+// CircularLinkedList.h defines a generic, templated circular singly linked
+// list used to store the Morning and Night skincare routines. Its final
+// node always points back to head so callers can cycle through steps
+// endlessly, and every operation keeps the head/tail pointers in sync.
+
 #endif
