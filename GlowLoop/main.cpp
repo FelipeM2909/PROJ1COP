@@ -136,7 +136,7 @@ void addSkincareStep(SkincareRoutine &morningRoutine,
                        skinConcern, instructions);
   selectedRoutine.addInOrder(
       newStep, [](const SkincareStep &left, const SkincareStep &right) {
-        return left.getStepOrder() < right.getStepOrder();
+        return left.getStepOrder() <= right.getStepOrder();
       });
 
   std::cout << "\nSkincare step added successfully.\n";
